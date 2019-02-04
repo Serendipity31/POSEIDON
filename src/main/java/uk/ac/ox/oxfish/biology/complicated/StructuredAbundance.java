@@ -20,6 +20,7 @@
 
 package uk.ac.ox.oxfish.biology.complicated;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import uk.ac.ox.oxfish.biology.Species;
 import uk.ac.ox.oxfish.utility.FishStateUtilities;
@@ -54,7 +55,8 @@ public class StructuredAbundance {
      */
     public StructuredAbundance(double[] ageStructure)
     {
-        //Preconditions.checkArgument(ageStructure.length > 0); not true anymore since it could be an emptybiology forced to return an empty structure
+        //Preconditions.checkArgument(ageStructure.length > 0); not true anymore since it could be an empty
+        // biology forced to return an empty structure
         abundance = new double[1][];
         abundance[0] = ageStructure;
     }
@@ -161,5 +163,13 @@ public class StructuredAbundance {
         return  FishStateUtilities.weigh(this,species.getMeristics());
 
 
+    }
+
+
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this)
+                .add("abundance", abundance)
+                .toString();
     }
 }

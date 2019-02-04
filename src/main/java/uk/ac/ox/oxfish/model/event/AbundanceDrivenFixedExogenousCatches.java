@@ -31,7 +31,6 @@ import uk.ac.ox.oxfish.utility.FishStateUtilities;
 import uk.ac.ox.oxfish.utility.Pair;
 
 import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * Basically you are given a number of fish to kill each year and you do that
@@ -55,21 +54,34 @@ public class AbundanceDrivenFixedExogenousCatches extends AbstractExogenousCatch
      * @return
      */
     protected Catch mortalityEvent(FishState model, Species target, SeaTile tile, double step) {
+       return abundanceSimpleMortalityEvent(model, target, tile, step, true);
+    }
+
+    /**
+     * simulate exogenous catch
+     * @param model the model
+     * @param target species to kill
+     * @param tile where to kill it
+     * @param step how much at most to kill
+     * @param rounding
+     * @return
+     */
+    public static Catch abundanceSimpleMortalityEvent(
+            FishState model, Species target, SeaTile tile, double step, final boolean rounding) {
         //take it as a fixed proportion catchability (and never more than it is available anyway)
         assert tile.getBiomass(target) > FishStateUtilities.EPSILON;
         double proportionToCatch = Math.min(1,step/tile.getBiomass(target));
         //simulate the catches as a fixed proportion gear
         HomogeneousAbundanceGear simulatedGear = new HomogeneousAbundanceGear(0,
                                                                               new FixedProportionFilter(
-                                                                                      proportionToCatch, true));
+                                                                                      proportionToCatch, rounding));
         //hide it in an heterogeneous abundance gear so that only one species at a time gets aught!
         HeterogeneousAbundanceGear gear = new HeterogeneousAbundanceGear(
                 new Pair<>(target, simulatedGear)
         );
         //catch it
-        Catch fish = gear.fish(null, tile, 1, model.getBiology());
+        Catch fish = gear.fish(null, tile,tile , 1, model.getBiology());
         tile.reactToThisAmountOfBiomassBeingFished(fish,fish,model.getBiology());
         return fish;
     }
-
 }

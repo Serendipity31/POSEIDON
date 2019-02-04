@@ -9,6 +9,11 @@ import uk.ac.ox.oxfish.utility.parameters.UniformDoubleParameter;
 public class CommonLogisticGrowerFactory implements AlgorithmFactory<CommonLogisticGrowerInitializer> {
 
     private DoubleParameter steepness = new FixedDoubleParameter(0.7);
+    /**
+     * when this is set to anything above 0, growth will be distributed with higher proportion to the area with higher
+     * unfilled carrying capacity
+     */
+    private DoubleParameter distributionalWeight = new FixedDoubleParameter(-1);
 
 
     public CommonLogisticGrowerFactory() {
@@ -32,7 +37,8 @@ public class CommonLogisticGrowerFactory implements AlgorithmFactory<CommonLogis
      */
     @Override
     public CommonLogisticGrowerInitializer apply(FishState state) {
-        return new CommonLogisticGrowerInitializer(steepness.makeCopy());
+        return new CommonLogisticGrowerInitializer(steepness.makeCopy(),
+                                                   distributionalWeight.apply(state.getRandom()));
     }
 
     /**
@@ -51,5 +57,24 @@ public class CommonLogisticGrowerFactory implements AlgorithmFactory<CommonLogis
      */
     public void setSteepness(DoubleParameter steepness) {
         this.steepness = steepness;
+    }
+
+
+    /**
+     * Getter for property 'distributionalWeight'.
+     *
+     * @return Value for property 'distributionalWeight'.
+     */
+    public DoubleParameter getDistributionalWeight() {
+        return distributionalWeight;
+    }
+
+    /**
+     * Setter for property 'distributionalWeight'.
+     *
+     * @param distributionalWeight Value to set for property 'distributionalWeight'.
+     */
+    public void setDistributionalWeight(DoubleParameter distributionalWeight) {
+        this.distributionalWeight = distributionalWeight;
     }
 }

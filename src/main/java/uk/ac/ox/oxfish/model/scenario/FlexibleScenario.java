@@ -25,6 +25,10 @@ import uk.ac.ox.oxfish.model.FishState;
 import uk.ac.ox.oxfish.model.FishStateDailyTimeSeries;
 import uk.ac.ox.oxfish.model.data.Gatherer;
 import uk.ac.ox.oxfish.model.data.collectors.FisherYearlyTimeSeries;
+import uk.ac.ox.oxfish.model.event.BiomassDrivenFixedExogenousCatches;
+import uk.ac.ox.oxfish.model.event.ExogenousCatches;
+import uk.ac.ox.oxfish.model.event.MixedExogenousCatches;
+import uk.ac.ox.oxfish.model.event.SimpleExogenousCatchesFactory;
 import uk.ac.ox.oxfish.model.market.AbstractMarket;
 import uk.ac.ox.oxfish.model.market.Market;
 import uk.ac.ox.oxfish.model.market.MarketMap;
@@ -66,6 +70,12 @@ public class FlexibleScenario implements Scenario {
 
     private AlgorithmFactory<? extends PortInitializer> portInitializer =
             new RandomPortFactory();
+    /**
+     * can people of different ports still be "friends" (that is, exchange info?); set to false by default
+     * because this will break imitation unless a good objective function is used.
+     */
+    private boolean allowFriendshipsAcrossPorts = false;
+
     {
         ((RandomPortFactory) portInitializer).setNumberOfPorts(new FixedDoubleParameter(2));
     }
@@ -104,6 +114,10 @@ public class FlexibleScenario implements Scenario {
 
 
     private boolean portSwitching = false;
+
+
+    private AlgorithmFactory<? extends ExogenousCatches> exogenousCatches = new SimpleExogenousCatchesFactory();
+
 
     /**
      * if this is not NaN then it is used as the random seed to feed into the map-making function. This allows for randomness
@@ -152,30 +166,30 @@ public class FlexibleScenario implements Scenario {
 
         //this next static method calls biology.initialize, weather.initialize and the like
         NauticalMapFactory.initializeMap(map, mapMakerRandom, biology,
-                weather,
-                global, model);
+                                         weather,
+                                         global, model);
 
 
         List<Port> ports = portInitializer.apply(model).buildPorts(map,
-                mapMakerRandom,
-                new Function<SeaTile, MarketMap>() {
-                    @Override
-                    public MarketMap apply(SeaTile seaTile) {
-                        //create fixed price market
-                        MarketMap marketMap = new MarketMap(global);
-                        //set market for each species
-                        for (Species species : global.getSpecies())
-                            marketMap.addMarket(species, market.apply(model));
-                        return marketMap;
-                    }
-                },
-                model,
-                new FixedGasPrice(gasPricePerLiter.apply(mapMakerRandom))
+                                                                   mapMakerRandom,
+                                                                   new Function<SeaTile, MarketMap>() {
+                                                                       @Override
+                                                                       public MarketMap apply(SeaTile seaTile) {
+                                                                           //create fixed price market
+                                                                           MarketMap marketMap = new MarketMap(global);
+                                                                           //set market for each species
+                                                                           for (Species species : global.getSpecies())
+                                                                               marketMap.addMarket(species, market.apply(model));
+                                                                           return marketMap;
+                                                                       }
+                                                                   },
+                                                                   model,
+                                                                   new FixedGasPrice(gasPricePerLiter.apply(mapMakerRandom))
         );
         Iterator<String> colorIterator = BoatPortrayalFactory.BOAT_COLORS.keySet().iterator();
         for(Port port : ports) {
             portColorTags.put(port,
-                    colorIterator.next());
+                              colorIterator.next());
         }
 
         //substitute back the original randomizer
@@ -200,22 +214,24 @@ public class FlexibleScenario implements Scenario {
         final NauticalMap map = model.getMap();
 
 
-        //no friends from separate ports
-        networkBuilder.addPredicate(new NetworkPredicate() {
-            @Override
-            public boolean test(Fisher from, Fisher to) {
-                return from.getHomePort().equals(to.getHomePort());
-            }
-        });
-
+        if(!allowFriendshipsAcrossPorts) {
+            //no friends from separate ports
+            networkBuilder.addPredicate(new NetworkPredicate() {
+                @Override
+                public boolean test(Fisher from, Fisher to) {
+                    return from.getHomePort().equals(to.getHomePort());
+                }
+            });
+        }
 
         Port[] ports =map.getPorts().toArray(new Port[map.getPorts().size()]);
 
         List<Fisher> fishers = new LinkedList<>();
         //arbitrary fisher factory
-        FisherFactory lastFactory = null;
+        Map<String,FisherFactory> factory = new LinkedHashMap<>();
         int definitionIndex = 0;
         for (FisherDefinition fisherDefinition : fisherDefinitions) {
+            final int populationNumber = definitionIndex;
             Pair<FisherFactory, List<Fisher>> generated = fisherDefinition.instantiateFishers(
                     model,
                     map.getPorts(),
@@ -238,7 +254,7 @@ public class FlexibleScenario implements Scenario {
                                             double averageProfits = model.getLatestDailyObservation(
                                                     FishStateDailyTimeSeries.AVERAGE_LAST_TRIP_HOURLY_PROFITS);
                                             return new FixedMap<>(averageProfits,
-                                                    toRepresent);
+                                                                  toRepresent);
                                         }
                                     }
                             );
@@ -247,9 +263,15 @@ public class FlexibleScenario implements Scenario {
                     new Consumer<Fisher>() {
                         @Override
                         public void accept(Fisher fisher) {
-                            fisher.getTags().add(
-                                    portColorTags.get(fisher.getHomePort())
-                            );
+                            //add population tag
+                            fisher.getTags().add("population"+ populationNumber);
+
+
+                            //do not over-write given color tags!
+                            if(!BoatPortrayalFactory.hasColorTag(fisher))
+                                fisher.getTags().add(
+                                        portColorTags.get(fisher.getHomePort())
+                                );
                         }
                     },
                     new Consumer<Fisher>() {
@@ -262,9 +284,22 @@ public class FlexibleScenario implements Scenario {
                     });
 
 
-            lastFactory = generated.getFirst();
+            factory.put("population"+ populationNumber,generated.getFirst());
             fishers.addAll(generated.getSecond());
             definitionIndex++;
+            //add population number in
+            if(fisherDefinitions.size()>1)
+            {
+                if(tagsToTrackSeparately.equals(""))
+                {
+                    assert populationNumber==0;
+                    tagsToTrackSeparately = "population0";
+                }
+                else{
+                    tagsToTrackSeparately = tagsToTrackSeparately+",population"+populationNumber;
+
+                }
+            }
         }
 
 
@@ -278,20 +313,46 @@ public class FlexibleScenario implements Scenario {
 
         addTagLandingTimeSeries(model);
 
+
+
+        //add exogenous catches
+        //start it!
+
+        ExogenousCatches catches = exogenousCatches.apply(model);
+        model.registerStartable(catches);
+
+
+
         if(fishers.size() <=1)
-            return new ScenarioPopulation(fishers, new SocialNetwork(new EmptyNetworkBuilder()), lastFactory );
+            return new ScenarioPopulation(fishers, new SocialNetwork(new EmptyNetworkBuilder()), factory );
         else {
-            return new ScenarioPopulation(fishers, new SocialNetwork(networkBuilder), lastFactory);
+            return new ScenarioPopulation(fishers, new SocialNetwork(networkBuilder), factory);
         }
     }
 
+
+    /**
+     * generate time serieses for populations of fishers
+     * @param state
+     * @param number
+     */
+    private void  addTimeSeriesToSubgroup(FishState state, int number){
+
+    }
+
+
+    /**
+     * all tags for which we would like to have separate time series recording, separated by ",";
+     * so for example "small,big"
+     */
+    private String tagsToTrackSeparately = "";
 
     /**
      * extract landing time series by classic tags
      */
     private void  addTagLandingTimeSeries(FishState state){
 
-        for(String tag : new String[]{"small","big"})
+        for(String tag : tagsToTrackSeparately.split(","))
         {
             //landings
             for(Species species : state.getBiology().getSpecies())
@@ -302,39 +363,52 @@ public class FlexibleScenario implements Scenario {
                                 mapToDouble(value -> value.getLatestYearlyObservation(
                                         species + " " + AbstractMarket.LANDINGS_COLUMN_NAME)).sum(), Double.NaN);
 
-            state.getYearlyDataSet().registerGatherer("Total Income of " +tag,
+            state.getYearlyDataSet().registerGatherer("Total Landings of " +tag,
                     fishState ->
                             fishState.getFishers().stream().
                                     filter(fisher -> fisher.getTags().contains(tag)).
-                                    mapToDouble(value -> value.getLatestYearlyObservation(
-                                            FisherYearlyTimeSeries.CASH_FLOW_COLUMN)).sum(), Double.NaN);
+                                    mapToDouble(value -> {
+
+                                        double sum = 0;
+                                        for(Species species : state.getBiology().getSpecies())
+                                            sum+=value.getLatestYearlyObservation(
+                                                    species + " " + AbstractMarket.LANDINGS_COLUMN_NAME);
+                                        return sum;
+                                    }).sum(), Double.NaN);
+
+            state.getYearlyDataSet().registerGatherer("Average Earnings of " +tag,
+                                                      fishState ->
+                                                              fishState.getFishers().stream().
+                                                                      filter(fisher -> fisher.getTags().contains(tag)).
+                                                                      mapToDouble(value -> value.getLatestYearlyObservation(
+                                                                              FisherYearlyTimeSeries.EARNINGS)).sum(), Double.NaN);
 
             state.getYearlyDataSet().registerGatherer("Average Distance From Port of " +tag,
-                    fishState ->
-                            fishState.getFishers().stream().
-                                    filter(fisher -> fisher.getTags().contains(tag)).
-                                    mapToDouble(value -> value.getLatestYearlyObservation(
-                                            FisherYearlyTimeSeries.FISHING_DISTANCE)).
-                                    filter(Double::isFinite).average().
-                                    orElse(Double.NaN), Double.NaN);
+                                                      fishState ->
+                                                              fishState.getFishers().stream().
+                                                                      filter(fisher -> fisher.getTags().contains(tag)).
+                                                                      mapToDouble(value -> value.getLatestYearlyObservation(
+                                                                              FisherYearlyTimeSeries.FISHING_DISTANCE)).
+                                                                      filter(Double::isFinite).average().
+                                                                      orElse(Double.NaN), Double.NaN);
 
             state.getYearlyDataSet().registerGatherer("Average Number of Trips of " +tag,
-                    fishState ->
-                            fishState.getFishers().stream().
-                                    filter(fisher -> fisher.getTags().contains(tag)).
-                                    mapToDouble(value -> value.getLatestYearlyObservation(
-                                            FisherYearlyTimeSeries.TRIPS)).average().
-                                    orElse(Double.NaN), 0 );
+                                                      fishState ->
+                                                              fishState.getFishers().stream().
+                                                                      filter(fisher -> fisher.getTags().contains(tag)).
+                                                                      mapToDouble(value -> value.getLatestYearlyObservation(
+                                                                              FisherYearlyTimeSeries.TRIPS)).average().
+                                                                      orElse(Double.NaN), 0 );
 
 
 
             state.getYearlyDataSet().registerGatherer("Average Number of Hours Out of " +tag,
-                    fishState ->
-                            fishState.getFishers().stream().
-                                    filter(fisher -> fisher.getTags().contains(tag)).
-                                    mapToDouble(value -> value.getLatestYearlyObservation(
-                                            FisherYearlyTimeSeries.HOURS_OUT)).average().
-                                    orElse(Double.NaN), 0 );
+                                                      fishState ->
+                                                              fishState.getFishers().stream().
+                                                                      filter(fisher -> fisher.getTags().contains(tag)).
+                                                                      mapToDouble(value -> value.getLatestYearlyObservation(
+                                                                              FisherYearlyTimeSeries.HOURS_OUT)).average().
+                                                                      orElse(Double.NaN), 0 );
             //do not just average the trip duration per fisher because otherwise you don't weigh them according to how many trips they actually did
             state.getYearlyDataSet().registerGatherer("Average Trip Duration of "+tag, new Gatherer<FishState>() {
                 @Override
@@ -366,52 +440,52 @@ public class FlexibleScenario implements Scenario {
             }, 0d);
 
             state.getYearlyDataSet().registerGatherer("Number Of Fishers of " +tag,
-                    fishState ->
-                            (double)fishState.getFishers().stream().
-                                    filter(fisher ->
-                                            fisher.getTags().contains(tag)).count(),
-                    Double.NaN);
+                                                      fishState ->
+                                                              (double)fishState.getFishers().stream().
+                                                                      filter(fisher ->
+                                                                                     fisher.getTags().contains(tag)).count(),
+                                                      Double.NaN);
 
             state.getYearlyDataSet().registerGatherer("Number Of Active Fishers of " +tag,
-                    fishState ->
-                            (double)fishState.getFishers().stream().
-                                    filter(new Predicate<Fisher>() {
-                                        @Override
-                                        public boolean test(Fisher fisher) {
-                                            return fisher.getLatestYearlyObservation(FisherYearlyTimeSeries.TRIPS)>0;
-                                        }
-                                    }).
-                                    filter(fisher ->
-                                            fisher.getTags().contains(tag)).count(),
-                    Double.NaN);
+                                                      fishState ->
+                                                              (double)fishState.getFishers().stream().
+                                                                      filter(new Predicate<Fisher>() {
+                                                                          @Override
+                                                                          public boolean test(Fisher fisher) {
+                                                                              return fisher.getLatestYearlyObservation(FisherYearlyTimeSeries.TRIPS)>0;
+                                                                          }
+                                                                      }).
+                                                                      filter(fisher ->
+                                                                                     fisher.getTags().contains(tag)).count(),
+                                                      Double.NaN);
 
 
 
 
 
             state.getYearlyDataSet().registerGatherer("Average Cash-Flow of " +tag,
-                    new Gatherer<FishState>() {
-                        @Override
-                        public Double apply(FishState observed) {
-                            List<Fisher> fishers = observed.getFishers().stream().
-                                    filter(new Predicate<Fisher>() {
-                                        @Override
-                                        public boolean test(Fisher fisher) {
-                                            return fisher.getTags().contains(tag);
-                                        }
-                                    }).collect(Collectors.toList());
-                            return fishers.stream().
-                                    mapToDouble(
-                                            new ToDoubleFunction<Fisher>() {
-                                                @Override
-                                                public double applyAsDouble(Fisher value) {
-                                                    return value.getLatestYearlyObservation(
-                                                            FisherYearlyTimeSeries.CASH_FLOW_COLUMN);
-                                                }
-                                            }).sum() /
-                                    fishers.size();
-                        }
-                    }, Double.NaN);
+                                                      new Gatherer<FishState>() {
+                                                          @Override
+                                                          public Double apply(FishState observed) {
+                                                              List<Fisher> fishers = observed.getFishers().stream().
+                                                                      filter(new Predicate<Fisher>() {
+                                                                          @Override
+                                                                          public boolean test(Fisher fisher) {
+                                                                              return fisher.getTags().contains(tag);
+                                                                          }
+                                                                      }).collect(Collectors.toList());
+                                                              return fishers.stream().
+                                                                      mapToDouble(
+                                                                              new ToDoubleFunction<Fisher>() {
+                                                                                  @Override
+                                                                                  public double applyAsDouble(Fisher value) {
+                                                                                      return value.getLatestYearlyObservation(
+                                                                                              FisherYearlyTimeSeries.CASH_FLOW_COLUMN);
+                                                                                  }
+                                                                              }).sum() /
+                                                                      fishers.size();
+                                                          }
+                                                      }, Double.NaN);
 
 
 
@@ -419,12 +493,6 @@ public class FlexibleScenario implements Scenario {
 
 
     }
-
-
-
-
-
-
 
 
 
@@ -541,5 +609,61 @@ public class FlexibleScenario implements Scenario {
 
     public void setMapMakerDedicatedRandomSeed(Long mapMakerDedicatedRandomSeed) {
         this.mapMakerDedicatedRandomSeed = mapMakerDedicatedRandomSeed;
+    }
+
+    /**
+     * Getter for property 'allowFriendshipsAcrossPorts'.
+     *
+     * @return Value for property 'allowFriendshipsAcrossPorts'.
+     */
+    public boolean isAllowFriendshipsAcrossPorts() {
+        return allowFriendshipsAcrossPorts;
+    }
+
+    /**
+     * Setter for property 'allowFriendshipsAcrossPorts'.
+     *
+     * @param allowFriendshipsAcrossPorts Value to set for property 'allowFriendshipsAcrossPorts'.
+     */
+    public void setAllowFriendshipsAcrossPorts(boolean allowFriendshipsAcrossPorts) {
+        this.allowFriendshipsAcrossPorts = allowFriendshipsAcrossPorts;
+    }
+
+    /**
+     * Getter for property 'tagsToTrackSeparately'.
+     *
+     * @return Value for property 'tagsToTrackSeparately'.
+     */
+    public String getTagsToTrackSeparately() {
+        return tagsToTrackSeparately;
+    }
+
+    /**
+     * Setter for property 'tagsToTrackSeparately'.
+     *
+     * @param tagsToTrackSeparately Value to set for property 'tagsToTrackSeparately'.
+     */
+    public void setTagsToTrackSeparately(String tagsToTrackSeparately) {
+        this.tagsToTrackSeparately = tagsToTrackSeparately;
+    }
+
+
+    /**
+     * Getter for property 'exogenousCatches'.
+     *
+     * @return Value for property 'exogenousCatches'.
+     */
+    public AlgorithmFactory<? extends ExogenousCatches> getExogenousCatches() {
+        return exogenousCatches;
+    }
+
+    /**
+     * Setter for property 'exogenousCatches'.
+     *
+     * @param exogenousCatches Value to set for property 'exogenousCatches'.
+     */
+    public void setExogenousCatches(
+            AlgorithmFactory<? extends ExogenousCatches> exogenousCatches) {
+        this.exogenousCatches = exogenousCatches;
     }
 }

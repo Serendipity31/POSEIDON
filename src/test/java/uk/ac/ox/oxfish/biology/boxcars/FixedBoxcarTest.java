@@ -61,6 +61,17 @@ public class FixedBoxcarTest {
                 .0001f
 
         );
+
+
+        for(int i=0; i<1000; i++)
+            VariableProportionAging.variableAging(population, graduationRate);
+        Assert.assertArrayEquals(
+                population,
+                new double[]{0, 0, 300},
+                .0001f
+
+        );
+
     }
 
 
@@ -181,7 +192,7 @@ public class FixedBoxcarTest {
         //10% yearly mortality
         ProportionalMortalityFactory mortalityProcess = new ProportionalMortalityFactory();
         biology.setMortalityProcess(mortalityProcess);
-        mortalityProcess.setYearlyMortality(new FixedDoubleParameter(.1));
+        mortalityProcess.setYearlyMortality(new FixedDoubleParameter(0.095175));
         //Aphaerus rutilans numbers
         EquallySpacedBertalanffyFactory meristics = new EquallySpacedBertalanffyFactory();
         meristics.setNumberOfBins(100);

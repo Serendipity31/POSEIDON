@@ -42,6 +42,7 @@ import uk.ac.ox.oxfish.geography.ports.Port;
 import uk.ac.ox.oxfish.gui.controls.PolicyButton;
 import uk.ac.ox.oxfish.gui.drawing.*;
 import uk.ac.ox.oxfish.model.FishState;
+import uk.ac.ox.oxfish.model.scenario.FisherFactory;
 import uk.ac.ox.oxfish.utility.FishStateUtilities;
 
 import javax.swing.*;
@@ -54,6 +55,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedList;
+import java.util.Map;
 
 /**
  * The GUI of FishState
@@ -152,7 +154,9 @@ public class  FishGUI extends GUIState{
     @Override
     public void init(Controller controller) {
 
+
         super.init(controller);
+        ((Console) controller).setSize(800,600);
         final Box timeBox = (Box) ((Console) controller).getContentPane().getComponents()[0];
         //turn stop button into a proper dispose and restart
         JButton stopButton = (JButton) timeBox.getComponent(2);
@@ -168,17 +172,25 @@ public class  FishGUI extends GUIState{
                     public void actionPerformed(ActionEvent e) {
 
 
+
+
                         //in their infinite wisdom, MASON programmers have hard-coded a "system.exit" call
                         //and now we have to do acrobatics just to keep this thing from turning off
                         Console console = (Console) controller;
 
-                        FishGUI.this.quit();
-                        FishGUI.this.state.finish();
+                        //we should probably pause, just to be safe
+                        console.setShouldRepeat(false);
+
+
                         for (Object allFrame : console.getAllFrames()) {
                             ((JFrame) allFrame).dispose();
                             
                         }
                         console.dispose();
+                        FishGUI.this.quit();
+                        FishGUI.this.state.finish();
+                        FishGUI.this.state=null;
+                        System.gc();
                         try {
                             Main.main(null);
                         } catch (IOException e1) {
@@ -325,17 +337,20 @@ public class  FishGUI extends GUIState{
 
         //if possible create buttons to add fishers
         if(state.canCreateMoreFishers()) {
-            policyButtons.add(gui -> {
-                JButton button = new JButton("Add 1 Fisher");
-                button.addActionListener(e -> {
-                    scheduleImmediatelyBefore(
-                            state1->
-                                    state.createFisher()
-                    );
+            for (Map.Entry<String, FisherFactory> factory : state.getFisherFactories()) {
+                policyButtons.add(gui -> {
+                    JButton button = new JButton("Add Fisher - " + factory.getKey());
+                    button.addActionListener(e -> {
+                        scheduleImmediatelyBefore(
+                                state1->
+                                        state.createFisher(factory.getKey())
+                        );
 
+                    });
+                    return button;
                 });
-                return button;
-            });
+            }
+
         }
 
         //create a button to kill fishers, grey it out when there are no more fishers
@@ -508,7 +523,7 @@ public class  FishGUI extends GUIState{
         portrayal.initializeGrid(model.getBiology(), model.getMap().getAllSeaTilesExcludingLandAsList());
 
         portrayal.setField(model.getRasterBathymetry().getGrid());
-        portrayal.setMap(new TriColorMap(-6000, 0, 6000, Color.BLUE, Color.CYAN, Color.GREEN, Color.RED));
+        portrayal.setMap(new TriColorMap(-6000, 0, 6000, Color.BLUE, Color.CYAN, Color.GREEN, new Color(0,100,0)));
 
         //now deal with display2d
         //change width and height to keep correct geographical ratio

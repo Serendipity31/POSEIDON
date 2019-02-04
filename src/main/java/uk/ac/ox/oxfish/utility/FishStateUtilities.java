@@ -25,7 +25,9 @@ import com.google.common.base.Preconditions;
 import com.thoughtworks.xstream.XStream;
 import com.thoughtworks.xstream.io.xml.StaxDriver;
 import ec.util.MersenneTwisterFast;
+import org.jetbrains.annotations.Nullable;
 import uk.ac.ox.oxfish.biology.GlobalBiology;
+import uk.ac.ox.oxfish.biology.LocalBiology;
 import uk.ac.ox.oxfish.biology.Species;
 import uk.ac.ox.oxfish.biology.complicated.Meristics;
 import uk.ac.ox.oxfish.biology.complicated.StructuredAbundance;
@@ -48,10 +50,7 @@ import uk.ac.ox.oxfish.utility.yaml.FishYAML;
 import uk.ac.ox.oxfish.utility.yaml.ModelResults;
 
 import java.awt.geom.Point2D;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.Array;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
@@ -63,7 +62,6 @@ import java.security.CodeSource;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.ToDoubleFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -551,7 +549,7 @@ public class FishStateUtilities {
      * @return
      */
     public static double catchSpecieGivenCatchability(
-            SeaTile where, int hoursSpentFishing, Species species, double q) {
+            LocalBiology where, int hoursSpentFishing, Species species, double q) {
         Preconditions.checkState(q >= 0);
         Preconditions.checkArgument(hoursSpentFishing== Fishing.MINIMUM_HOURS_TO_PRODUCE_A_CATCH);
         //catch
@@ -673,6 +671,30 @@ public class FishStateUtilities {
             {
                 totalWeight += abundance.getAbundance(subdivision, binIndex) * meristics.getWeight(subdivision, binIndex);
             }
+
+        return totalWeight;
+
+
+    }
+
+
+    /**
+     * used to weigh only one bin for one subdivision of the structured abundance catch
+     * @param abundance
+     * @param meristics
+     * @param binIndex
+     * @return
+     */
+    public static double weigh(StructuredAbundance abundance,
+                               Meristics meristics, int subdivisionIndex,
+                               int binIndex)
+    {
+        //no female-male split
+        double totalWeight = 0;
+        //go through all the fish and sum up their weight at given age
+
+        totalWeight += abundance.getAbundance(subdivisionIndex, binIndex) * meristics.getWeight(subdivisionIndex, binIndex);
+
 
         return totalWeight;
 
@@ -914,11 +936,15 @@ public class FishStateUtilities {
         return result;
     }
 
+
+
     public static FishState  run(
             String simulationName, Path scenarioYaml, final Path outputFolder,
             final Long seed, final int logLevel, final boolean additionalData,
             final String policyScript, final int yearsToRun,
-            final boolean saveOnExit, Integer heatmapGathererYear) throws IOException {
+            final boolean saveOnExit, Integer heatmapGathererYear,
+            @Nullable Consumer<Scenario> scenarioSetup,
+            @Nullable  Consumer<FishState> preStartSetup) throws IOException {
         outputFolder.toFile().mkdirs();
 
         //create scenario and files
@@ -926,9 +952,14 @@ public class FishStateUtilities {
 
         FishYAML yaml = new FishYAML();
         Scenario scenario = yaml.loadAs(fullScenario, Scenario.class);
+
+
         FileWriter io = new FileWriter(outputFolder.resolve("scenario.yaml").toFile());
         yaml.dump(scenario, io);
         io.close();
+
+        if(scenarioSetup!=null)
+            scenarioSetup.accept(scenario);
 
         FishState model = new FishState(seed);
         Log.setLogger(new FishStateLogger(model,
@@ -945,8 +976,8 @@ public class FishStateUtilities {
         else
             gatherer=null;
 
-
-
+        if(preStartSetup!=null)
+            preStartSetup.accept(model);
         model.start();
 
         if(additionalData) {
@@ -1161,21 +1192,40 @@ public class FishStateUtilities {
     }
 
 
-    public static double timeSeriesDistance(DataColumn data,
-                                            Path csvFilePath) throws IOException {
+    public static double getWeightedAverage(double[] observations, double[] weight)
+    {
+        Preconditions.checkArgument(observations.length==weight.length);
+        double sum = 0;
+        double denominator = 0;
+        for(int i=0; i<observations.length; i++)
+        {
+            sum += observations[i] * weight[i];
+            denominator += weight[i];
+        }
+        return sum/denominator;
+    }
+
+
+    public static double timeSeriesDistance(
+            DataColumn data,
+            Path csvFilePath, final double exponent) throws IOException {
         return timeSeriesDistance(
                 data,
                 Files.readAllLines(csvFilePath).stream().mapToDouble(
                         value -> Double.parseDouble(value.trim())
-                ).boxed().collect(Collectors.toList())
+                ).boxed().collect(Collectors.toList()
+                                  ),
+                exponent,
 
-                );
+                false);
     }
 
 
     public static double timeSeriesDistance(Iterable<Double> timeSeriesOne,
-                                            Iterable<Double> timeSeriesTwo)
+                                            Iterable<Double> timeSeriesTwo,
+                                            double exponent, boolean cumulativeError)
     {
+        Preconditions.checkArgument(exponent>0);
         Iterator<Double> firstIterator = timeSeriesOne.iterator();
         Iterator<Double> secondIterator = timeSeriesTwo.iterator();
 
@@ -1186,12 +1236,20 @@ public class FishStateUtilities {
             Preconditions.checkArgument(secondIterator.hasNext(),
                     "Time series are of different length");
 
-            error+= Math.abs(firstIterator.next() - secondIterator.next());
+            double raw = firstIterator.next() - secondIterator.next();
+            if(!cumulativeError) {
+                raw =  Math.pow(Math.abs(raw),exponent);
+            }
+
+            error+= raw;
         }
         Preconditions.checkArgument(!secondIterator.hasNext(),
                 "Time series are of different length");
 
-        return error;
+        return Math.abs(error);
     }
+
+
+
 }
 

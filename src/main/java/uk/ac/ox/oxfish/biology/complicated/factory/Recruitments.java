@@ -60,9 +60,17 @@ public class Recruitments {
                          RecruitmentBySpawningFactory::new);
         NAMES.put(RecruitmentBySpawningFactory.class,"Beverton-Holt");
 
+        CONSTRUCTORS.put("Beverton-Holt Knife-Edge Maturity",
+                         RecruitmentBySpawningJackKnifeMaturity::new);
+        NAMES.put(RecruitmentBySpawningJackKnifeMaturity.class,"Beverton-Holt Knife-Edge Maturity");
+
         CONSTRUCTORS.put("Fixed Recruitment",
                          FixedRecruitmentFactory::new);
         NAMES.put(FixedRecruitmentFactory.class,"Fixed Recruitment");
+
+        CONSTRUCTORS.put("Linear SSB Recruitment",
+                         LinearSSBRatioSpawningFactory::new);
+        NAMES.put(LinearSSBRatioSpawningFactory.class,"Linear SSB Recruitment");
 
     }
 

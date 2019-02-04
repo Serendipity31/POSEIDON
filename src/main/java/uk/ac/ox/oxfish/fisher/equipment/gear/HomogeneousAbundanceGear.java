@@ -24,6 +24,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import uk.ac.ox.oxfish.biology.GlobalBiology;
+import uk.ac.ox.oxfish.biology.LocalBiology;
 import uk.ac.ox.oxfish.biology.Species;
 import uk.ac.ox.oxfish.biology.complicated.StructuredAbundance;
 import uk.ac.ox.oxfish.fisher.Fisher;
@@ -31,8 +32,8 @@ import uk.ac.ox.oxfish.fisher.equipment.Boat;
 import uk.ac.ox.oxfish.fisher.equipment.Catch;
 import uk.ac.ox.oxfish.fisher.equipment.gear.components.AbundanceFilter;
 import uk.ac.ox.oxfish.geography.SeaTile;
-import uk.ac.ox.oxfish.utility.FishStateUtilities;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 
@@ -46,7 +47,7 @@ public class HomogeneousAbundanceGear implements Gear {
     /**
      * the list of all filters, to use sequentially
      */
-    private final ImmutableList<AbundanceFilter> filters;
+    private final AbundanceFilter[] filters;
 
 
     /**
@@ -60,7 +61,7 @@ public class HomogeneousAbundanceGear implements Gear {
      */
     public HomogeneousAbundanceGear(double litersOfGasConsumedEachHourFishing,
                                     AbundanceFilter... filters) {
-        this.filters = ImmutableList.copyOf(filters);
+        this.filters = Arrays.copyOf(filters,filters.length);
         this.litersOfGasConsumedEachHourFishing=litersOfGasConsumedEachHourFishing;
         Preconditions.checkArgument(filters.length > 0, "no filters provided");
     }
@@ -68,9 +69,10 @@ public class HomogeneousAbundanceGear implements Gear {
 
     @Override
     public Catch fish(
-            Fisher fisher, SeaTile where, int hoursSpentFishing, GlobalBiology modelBiology)
+            Fisher fisher, LocalBiology localBiology, SeaTile context,
+            int hoursSpentFishing, GlobalBiology modelBiology)
     {
-        StructuredAbundance[] catches = catchesToArray(where, hoursSpentFishing, modelBiology);
+        StructuredAbundance[] catches = catchesToArray(localBiology, hoursSpentFishing, modelBiology);
 
 
         return new Catch(catches,modelBiology);
@@ -79,7 +81,7 @@ public class HomogeneousAbundanceGear implements Gear {
     }
 
     private StructuredAbundance[] catchesToArray(
-            SeaTile where, int hoursSpentFishing, GlobalBiology modelBiology) {
+            LocalBiology where, int hoursSpentFishing, GlobalBiology modelBiology) {
         //create array containing biomass
         StructuredAbundance[] abundances = new StructuredAbundance[modelBiology.getSize()];
         for(Species species : modelBiology.getSpecies())
@@ -96,31 +98,55 @@ public class HomogeneousAbundanceGear implements Gear {
      * @param species
      * @return
      */
-    public StructuredAbundance catchesAsAbundanceForThisSpecies(SeaTile where, int hoursSpentFishing, Species species) {
+    public StructuredAbundance catchesAsAbundanceForThisSpecies(LocalBiology where, int hoursSpentFishing, Species species) {
         //prepare empty array
-        double[][] catches = emptyAbundance(species);
+        prepTempAbundance(species);
 
-        //if there is no fish, don't bother
-        if(where.getBiology().getBiomass(species)>FishStateUtilities.EPSILON) {
+        double[][] catches = tempAbundance;
 
-            //you are going to fish every hour until you are done
-            int hoursSpentFishingThisSpecies = hoursSpentFishing;
 
-            while (hoursSpentFishingThisSpecies > 0) {
-                double[][] hourlyCatches = fishThisSpecies(where, species);
-                for (int cohort = 0; cohort < catches.length; cohort++)
-                    for (int bin = 0; bin < catches[0].length; bin++)
-                        catches[cohort][bin] += hourlyCatches[cohort][bin];
+        //you are going to fish every hour until you are done
+        int hoursSpentFishingThisSpecies = hoursSpentFishing;
 
-                hoursSpentFishingThisSpecies = hoursSpentFishingThisSpecies - 1;
-            }
+        while (hoursSpentFishingThisSpecies > 0) {
+            double[][] hourlyCatches = fishThisSpecies(where, species);
+            for (int cohort = 0; cohort < catches.length; cohort++)
+                for (int bin = 0; bin < catches[0].length; bin++)
+                    catches[cohort][bin] += hourlyCatches[cohort][bin];
+
+            hoursSpentFishingThisSpecies = hoursSpentFishingThisSpecies - 1;
+
         }
         return new StructuredAbundance(catches);
     }
 
-    protected static double[][] emptyAbundance(Species species) {
-        double[][] catches = new double[species.getNumberOfSubdivisions()][species.getNumberOfBins()];
-        return catches;
+    //basically if every hour of fishing we create a matrix we are going to collapse under our own weight
+    //recycle the abundance matrix instead. This is dangerous but every time this is called it should be safe to assume
+    //that the previous numbers have by now been used
+    private void prepTempAbundance(Species species) {
+        if(tempAbundance==null)
+            tempAbundance = new double[species.getNumberOfSubdivisions()][species.getNumberOfBins()];
+        else {
+            Preconditions.checkArgument(tempAbundance.length==species.getNumberOfSubdivisions());
+            Preconditions.checkArgument(tempAbundance[0].length==species.getNumberOfBins());
+            for (double[] row : tempAbundance)
+                Arrays.fill(row, 0);
+        }
+    }
+
+    private double tempAbundance[][];
+    private double tempLocationalAbundance[][];
+
+    private double[][] prepTemplocationalAbundance(Species species) {
+        if(tempLocationalAbundance==null)
+            tempLocationalAbundance = new double[species.getNumberOfSubdivisions()][species.getNumberOfBins()];
+        else {
+            Preconditions.checkArgument(tempLocationalAbundance.length==species.getNumberOfSubdivisions());
+            Preconditions.checkArgument(tempLocationalAbundance[0].length==species.getNumberOfBins());
+            for (double[] row : tempLocationalAbundance)
+                Arrays.fill(row, 0);
+        }
+        return tempLocationalAbundance;
     }
 
 
@@ -137,6 +163,7 @@ public class HomogeneousAbundanceGear implements Gear {
         return weights;
     }
 
+
     /**
      * fish for one hour targeting one species and returns the abundance caught
      * @param where where the fishing occurs
@@ -144,12 +171,21 @@ public class HomogeneousAbundanceGear implements Gear {
      * @return
      */
     protected double[][] fishThisSpecies(
-            SeaTile where, Species species) {
+            LocalBiology where, Species species) {
         //get the array of the fish (but perform a safety copy)
-        double[][] fish = new StructuredAbundance(where.getAbundance(species)).asMatrix();
-        //filter until you get the catch
-        fish = filter(species, fish);
 
+        double[][] fish = prepTemplocationalAbundance(species);
+        double[][] realValues = where.getAbundance(species).asMatrix();
+        boolean isNonZero = false;
+        for(int subdivision=0; subdivision<realValues.length; subdivision++)
+            for(int bin=0; bin<realValues[0].length; bin++) {
+                fish[subdivision][bin] = realValues[subdivision][bin];
+                if(realValues[subdivision][bin]>0)
+                    isNonZero = true;
+            }
+        //filter until you get the catch
+        if(isNonZero)
+            fish = filter(species, fish);
 
         return fish;
     }
@@ -185,7 +221,7 @@ public class HomogeneousAbundanceGear implements Gear {
     @Override
     public Gear makeCopy() {
         return new HomogeneousAbundanceGear(litersOfGasConsumedEachHourFishing,
-                                            filters.toArray(new AbundanceFilter[filters.size()]));
+                                            filters);
 
 
     }

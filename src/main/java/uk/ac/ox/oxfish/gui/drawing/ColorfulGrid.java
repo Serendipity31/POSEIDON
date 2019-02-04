@@ -64,7 +64,7 @@ public class ColorfulGrid extends FastObjectGridPortrayal2D {
      * the default encoder just returns altitude
      */
 
-    private final ColorMap depthColor = new TriColorMap(-6000, 0, 6000, Color.BLUE, Color.CYAN, Color.GREEN, Color.RED);
+    private final ColorMap depthColor = new TriColorMap(-6000, 0, 6000, Color.BLUE, Color.CYAN, Color.GREEN, new Color(0,100,0));
 
 
     private final Queue<Color> defaultFishColors = new LinkedList<>();
@@ -89,7 +89,7 @@ public class ColorfulGrid extends FastObjectGridPortrayal2D {
         this.random = random;
         //add the default color map showing depth
         encodings.put("Depth", new ColorEncoding(
-                new TriColorMap(-6000, 0, 6000, Color.BLUE, Color.CYAN, Color.GREEN, Color.RED),
+                depthColor,
                 seaTile -> seaTile.isProtected() ? Double.NaN : seaTile.getAltitude(), true));
 
         //add the default color map showing rocky areas
@@ -134,14 +134,36 @@ public class ColorfulGrid extends FastObjectGridPortrayal2D {
 
             Color color =  defaultFishColors.size() == 0 ? Color.RED : defaultFishColors.poll();
             encodings.put(species.getName(), new SelfAdjustingColorEncoding(
-                    new SimpleColorMap(0, max, Color.WHITE, color),
+                    new SimpleColorMap(0, max, Color.WHITE, color){
+
+                        @Override
+                        public boolean validLevel(double value) {
+                            return true;
+                        }
+
+                        @Override
+                        public int getRGB(double level) {
+                            return getColor(level).getRGB();
+                        }
+
+                        @Override
+                        public Color getColor(double level) {
+                            if(Double.isFinite(level))
+                                return super.getColor(level);
+                            else
+                                return Color.BLACK;
+
+                        }
+                    },
                     seaTile ->
+                            seaTile.getAltitude() >= 0 ? Double.NaN :
                             BIOMASS_TRANSFORM.apply(
                                     seaTile.getBiomass(species)),
                     false,
                     max,
                     0));
-        }
+        };
+
 
     }
 

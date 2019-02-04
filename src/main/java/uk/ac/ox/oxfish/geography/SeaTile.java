@@ -41,7 +41,7 @@ import uk.ac.ox.oxfish.utility.FishStateUtilities;
  *
  * Created by carrknight on 4/2/15.
  */
-public class SeaTile implements Startable{
+public class SeaTile implements Startable, LocalBiology{
 
 
     private final int gridX;
@@ -147,13 +147,23 @@ public class SeaTile implements Startable{
     }
 
 
+    private String coords;
+
     @Override
     public String toString() {
+        if(coords==null)
         return "SeaTile "
                 + gridX +
                 "," + gridY +
                 " altitude=" + altitude +
                 " bio = " + biology;
+        else
+            return "SeaTile "
+                    + gridX +
+                    "," + gridY +
+                    " altitude=" + altitude +
+                    " bio = " + biology +
+                    " coords = " + coords;
     }
 
 
@@ -167,6 +177,8 @@ public class SeaTile implements Startable{
     @Override
     public void start(FishState model) {
         biology.start(model);
+        coords = model.getMap().getCoordinates(this).toString();
+
     }
 
     /**

@@ -5,6 +5,7 @@ plugins {
     //id "us.kirchmeier.capsule" version "1.0.1"
     //id "jacoco"
     id 'com.github.johnrengelman.shadow' version '2.0.0'
+    id 'com.gradle.build-scan' version '1.16'
 }
 
 
@@ -110,10 +111,6 @@ test{
         maxParallelForks = Math.min(Runtime.runtime.availableProcessors(),3)
 }
 
-//this just mentions what the gradle version for the "wrapper" gradlew ought to be
-task wrapper(type: Wrapper) {
-
-}
 
 
 
@@ -216,30 +213,6 @@ task optimizer(type: JavaExec){
     main = 'uk.ac.ox.oxfish.MainOptimizer'
 }
 
-//easy function to get formatted date
-def getDate() {
-    if(ext.date==null) {
-        def date = new Date()
-        def formattedDate = date.format('yyyy-MM-dd=HH-mm-ss')
-        ext.date = formattedDate.toString()
-    }
-    return ext.date
-}
-
-ext{
-    date=null;
-    website_folder = '/home/carrknight/code/carrknight.github.io';
-
-}
-
-
-task dashboard(type: Exec) {
-    dependsOn 'appendix'
-    dependsOn 'test'
-    executable = 'python2'
-    workingDir = "${projectDir}"
-    args = [ "dashboard.py",  date, website_folder ]
-}
 
 task sample_inputs(type:JavaExec){
     main = 'uk.ac.ox.oxfish.experiments.BuildSampleInputs'
@@ -252,20 +225,17 @@ task appendix(type:JavaExec){
     classpath = sourceSets.main.runtimeClasspath
 }
 
+task execute(type:JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    main = project.hasProperty("mainClass") ? project.getProperty("mainClass") : "package.MyDefaultMain"
+
+}
 
 
 task algorithms(type:JavaExec){
     main = 'uk.ac.ox.oxfish.experiments.SocialTuningExercise'
     classpath = sourceSets.main.runtimeClasspath
 }
-
-//scenario = "tofill"
-////this task can be called as ./gradlew buildSampleFiles and simply rebuilds the "YAML Samples" folder
-//task indirectinference(type: JavaExec){
-//    classpath = sourceSets.main.runtimeClasspath
-//    main = 'uk.ac.ox.oxfish.experiments.IndirectInferencePaper'
-//    args = ["$scenario"]
-//}
 
 task batch(type:JavaExec){
     main = 'uk.ac.ox.oxfish.gui.BatchRunnerSetup'
@@ -280,6 +250,11 @@ test {
   }
 }
 
+
+buildScan {
+    termsOfServiceUrl = 'https://gradle.com/terms-of-service'
+    termsOfServiceAgree = 'yes'
+}
 
 idea{
     project {

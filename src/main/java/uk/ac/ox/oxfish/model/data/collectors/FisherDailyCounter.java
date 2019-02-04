@@ -22,6 +22,7 @@ package uk.ac.ox.oxfish.model.data.collectors;
 
 import sim.engine.SimState;
 import uk.ac.ox.oxfish.biology.Species;
+import uk.ac.ox.oxfish.fisher.equipment.Catch;
 
 /**
  *
@@ -36,11 +37,14 @@ public class FisherDailyCounter extends Counter {
 
     private double[] earnings;
 
+    private double[][][] landingsPerBin;
+
     public FisherDailyCounter(int numberOfSpecies) {
         super(IntervalPolicy.EVERY_DAY);
         landings = new double[numberOfSpecies];
         earnings = new double[numberOfSpecies];
         catches = new double[numberOfSpecies];
+        landingsPerBin = new double[numberOfSpecies][][];
         super.addColumn(FisherYearlyTimeSeries.CASH_FLOW_COLUMN);
         super.addColumn(FisherYearlyTimeSeries.EFFORT);
     }
@@ -54,6 +58,12 @@ public class FisherDailyCounter extends Counter {
             landings[i]=0;
             earnings[i]=0;
             catches[i]=0;
+            if(landingsPerBin[i]!=null)
+            {
+                for(int subdivision = 0; subdivision< landingsPerBin[i].length; subdivision++)
+                    for(int bin = 0; bin< landingsPerBin[i][0].length; bin++)
+                        landingsPerBin[i][subdivision][bin]=0;
+            }
         }
     }
 
@@ -64,6 +74,18 @@ public class FisherDailyCounter extends Counter {
      */
     public void countLanding(Species species, double add) {
         landings[species.getIndex()]+=add;
+    }
+
+
+    public void countLandinngPerBin(Species species, Catch catchOfTheDay) {
+
+        if(landingsPerBin[species.getIndex()]==null)
+            landingsPerBin[species.getIndex()]=new double[species.getNumberOfSubdivisions()][species.getNumberOfBins()];
+
+        for(int subdivision = 0; subdivision< landingsPerBin[species.getIndex()].length; subdivision++)
+            for(int bin = 0; bin< landingsPerBin[species.getIndex()][0].length; bin++)
+                landingsPerBin[species.getIndex()][subdivision][bin] += catchOfTheDay.getWeightCaught(species,subdivision,bin);
+
     }
 
     public void countEarnings(Species species, double add) {
@@ -87,4 +109,25 @@ public class FisherDailyCounter extends Counter {
     public double getCatchesPerSpecie(int index){
         return catches[index];
     }
+
+
+    public double getSpecificLandings(Species species, int bin){
+        if(landingsPerBin[species.getIndex()]==null)
+            return 0d;
+        else {
+            double sum = 0;
+            for(int subdivision = 0; subdivision< landingsPerBin[species.getIndex()].length; subdivision++)
+                sum+=landingsPerBin[species.getIndex()][subdivision][bin];
+            return sum;
+        }
+    }
+    public double getSpecificLandings(Species species, int subdivision, int bin){
+        if(landingsPerBin[species.getIndex()]==null)
+            return 0d;
+        else {
+            return landingsPerBin[species.getIndex()][subdivision][bin];
+        }
+    }
+
+
 }

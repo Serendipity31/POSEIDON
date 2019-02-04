@@ -109,7 +109,7 @@ public class Catch {
         this.abundance = abundance;
         Preconditions.checkArgument(biology.getSize() == abundance.length);
 
-        //weigh them (assuming they are all men!)
+        //weigh them
         biomassCaught = abundanceToBiomass(biology);
         totalWeight = computeTotalWeight();
 
@@ -215,6 +215,13 @@ public class Catch {
         return FishStateUtilities.weigh(abundance[species.getIndex()],species.getMeristics(),bin);
     }
 
+
+    public double getWeightCaught(Species species,int subdivision, int bin)
+    {
+        Preconditions.checkArgument(hasAbundanceInformation());
+        return FishStateUtilities.weigh(abundance[species.getIndex()],species.getMeristics(),subdivision,bin);
+    }
+
     @Nullable
     public StructuredAbundance getAbundance(Species species)
     {
@@ -233,7 +240,12 @@ public class Catch {
 
     public double totalCatchWeight()
     {
-        return Arrays.stream(biomassCaught).sum();
+        double sum =0;
+        for (double caught : biomassCaught) {
+            sum+=caught;
+
+        }
+        return sum;
     }
 
     @Override

@@ -58,18 +58,20 @@ public class FixedProportionFilter implements AbundanceFilter
     @Override
     public double[][] filter(Species species, double[][] abundance)
     {
-        double[][] filtered = new double[abundance.length][abundance[0].length];
         for(int subdivision=0; subdivision<abundance.length; subdivision++ ) {
             for (int age = 0; age < abundance[subdivision].length; age++) {
-                filtered[subdivision][age] = (abundance[subdivision][age] * proportion);
+                abundance[subdivision][age] *=   proportion;
 
-                if (rounding) {
-                    filtered[subdivision][age] = FishStateUtilities.quickRounding(filtered[subdivision][age]);
 
-                }
             }
         }
-        return filtered;
+        if (rounding) {
+            for(int subdivision=0; subdivision<abundance.length; subdivision++ )
+                for (int age = 0; age < abundance[subdivision].length; age++)
+                    abundance[subdivision][age] = FishStateUtilities.quickRounding(abundance[subdivision][age]);
+
+        }
+        return abundance;
     }
 
     public double getProportion() {

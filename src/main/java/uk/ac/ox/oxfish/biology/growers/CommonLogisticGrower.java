@@ -13,9 +13,7 @@ import uk.ac.ox.oxfish.model.StepOrder;
 import uk.ac.ox.oxfish.utility.FishStateUtilities;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * the biomass of the whole map is aggregated and spawns logistically.
@@ -31,9 +29,12 @@ public class CommonLogisticGrower implements Startable, Steppable {
 
     private final Species species;
 
-    public CommonLogisticGrower(double malthusianParameter, Species species) {
+    private final double distributionalWeight;
+
+    public CommonLogisticGrower(double malthusianParameter, Species species, double distributionalWeight) {
         this.malthusianParameter = malthusianParameter;
         this.species = species;
+        this.distributionalWeight = distributionalWeight;
     }
 
     /**
@@ -63,22 +64,27 @@ public class CommonLogisticGrower implements Startable, Steppable {
                 malthusianParameter
 
         );
-        //compute recruitment and distribute it at random
+        //compute recruitment
         recruitment = Math.min(recruitment,capacity-current);
         assert recruitment>=-FishStateUtilities.EPSILON;
         if(recruitment>FishStateUtilities.EPSILON) {
-            //grow fish
-
-            DerisoSchnuteCommonGrower.allocateBiomassAtRandom(
-                    biologies,
-                    recruitment,
-                    model.getRandom(),
-                    species.getIndex()
-            );
+            //distribute it
+            if(distributionalWeight>0)
+                CommonLogisticGrower.allocateBiomassProportionally(biologies,
+                                                                   recruitment,
+                                                                   species.getIndex(),
+                                                                   distributionalWeight);
+            else
+                DerisoSchnuteCommonGrower.allocateBiomassAtRandom(
+                        biologies,
+                        recruitment,
+                        model.getRandom(),
+                        species.getIndex()
+                );
             //count growth
             model.getYearlyCounter().count(model.getSpecies().get(species.getIndex()) +
-                            " Recruitment",
-                    recruitment);
+                                                   " Recruitment",
+                                           recruitment);
         }
 
 
@@ -110,5 +116,69 @@ public class CommonLogisticGrower implements Startable, Steppable {
     @Override
     public void turnOff() {
         biologies.clear();
+    }
+
+    /**
+     * allocates recruitment to each cell in proportion of what's missing there (in absolute terms)
+     * @param biologyList list of cells that can be repopulation
+     * @param biomassToAllocate biomass growth
+     * @param speciesIndex the species number
+     * @param distributionalWeight the higher, the more biomass will in proportion flow towards areas with higher carrying capacity
+     */
+    public static void allocateBiomassProportionally(
+            List<? extends VariableBiomassBasedBiology> biologyList,
+            double biomassToAllocate,
+            int speciesIndex, double distributionalWeight){
+
+        if(biomassToAllocate <FishStateUtilities.EPSILON) //don't bother with super tiny numbers
+            return;
+        double totalEmptySpace = 0;
+        for (VariableBiomassBasedBiology local : biologyList) {
+            totalEmptySpace += Math.pow(local.getCarryingCapacity(speciesIndex) - local.getCurrentBiomass()[speciesIndex],
+                                        distributionalWeight);
+        }
+
+        if(!Double.isFinite(totalEmptySpace))
+        {
+            throw  new RuntimeException("Distributional weight too high, crashes the system");
+        }
+
+        /**
+         * if you are using high distributional weights, some stuff might get full, so we need to recursively call this again
+         */
+        double leftOver = 0;
+
+        //if there is less empty space than recruitment, just fill it all up!
+        if(totalEmptySpace<= biomassToAllocate) {
+            for (VariableBiomassBasedBiology local : biologyList) {
+                local.getCurrentBiomass()[speciesIndex] = local.getCarryingCapacity(speciesIndex);
+            }
+        }
+        else
+        {
+            //reallocate proportional to the empty space here compared to the total empty space
+            for (VariableBiomassBasedBiology local : biologyList) {
+                double emptySpace = Math.pow(local.getCarryingCapacity(speciesIndex) -
+                                                     local.getCurrentBiomass()[speciesIndex],distributionalWeight);
+                double addHere = biomassToAllocate * emptySpace / totalEmptySpace;
+                if(local.getCurrentBiomass()[speciesIndex]+addHere > local.getCarryingCapacity(speciesIndex))
+                {
+                    leftOver += (addHere - (local.getCarryingCapacity(speciesIndex))-local.getCurrentBiomass()[speciesIndex]);
+                    local.getCurrentBiomass()[speciesIndex] = local.getCarryingCapacity(speciesIndex);
+                }
+                else{
+                    local.getCurrentBiomass()[speciesIndex] += addHere;
+
+                }
+
+                assert local.getCurrentBiomass()[speciesIndex] <= local.getCarryingCapacity(speciesIndex);
+            }
+
+        }
+
+        assert leftOver>=0;
+        assert leftOver< biomassToAllocate;
+        if(leftOver>FishStateUtilities.EPSILON)
+            allocateBiomassProportionally(biologyList,leftOver,speciesIndex,distributionalWeight);
     }
 }

@@ -121,8 +121,7 @@ public class AbundanceLocalBiology implements LocalBiology
     private static boolean warned = false;
 
     /**
-     * Sends a warning (since that's not usually the kind of behaviour we want) and after that
-     * kills off fish starting from the oldest male until enough biomass dies.
+     * Will only work if the catch object has biology information
      * @param caught fish taken from the sea
      * @param notDiscarded fish put in hold
      * @param biology biology object
@@ -151,8 +150,14 @@ public class AbundanceLocalBiology implements LocalBiology
             for(int subdivision =0;subdivision<catches.getSubdivisions(); subdivision++ ) {
                 for (int bin = 0; bin < catches.getBins(); bin++) {
                     abundanceHere[subdivision][bin] -= catchesMatrix[subdivision][bin];
-                    Preconditions.checkArgument(abundanceHere[FishStateUtilities.MALE][bin] >= 0,
-                                                "There is now a negative amount of male fish left at bin " + bin);
+                    Preconditions.checkArgument(abundanceHere[subdivision][bin] >= -FishStateUtilities.EPSILON,
+                                                "There is now a negative amount of male fish left" );
+                    //overfished, but could be a numerical issue
+                    if(abundanceHere[subdivision][bin]<0)
+                    {
+                        assert  abundanceHere[subdivision][bin] >= -FishStateUtilities.EPSILON;
+                        abundanceHere[subdivision][bin]=0;
+                    }
 
                 }
             }

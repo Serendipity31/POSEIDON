@@ -24,15 +24,15 @@ import com.esotericsoftware.minlog.Log;
 import com.google.common.base.Preconditions;
 import org.jetbrains.annotations.Nullable;
 import uk.ac.ox.oxfish.model.data.collectors.DataColumn;
+import uk.ac.ox.oxfish.model.scenario.Scenario;
 import uk.ac.ox.oxfish.utility.FishStateUtilities;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Created by carrknight on 9/24/16.
@@ -47,9 +47,10 @@ public class BatchRunner
     private final Path yamlFile;
 
     /**
-     * number of years to lspiRun each model
+     * number of years to runs each model
      */
     private final int yearsToRun;
+
 
     /**
      * list of data columns to print
@@ -78,6 +79,21 @@ public class BatchRunner
 
     private final Integer heatmapGathererStartYear;
 
+    /**
+     * this is an helper for anything else that we need to do to a scenario
+     */
+    private Consumer<Scenario>  scenarioSetup;
+
+    /**
+     * this is a hook for anything you want to do to FishState after the scenario is loaded but BEFORE start is called
+     */
+    private Consumer<FishState> beforeStartSetup;
+
+    /**
+     * function to add columns between the year-run columns and the data columns from the model itself.
+     */
+    private ColumnModifier columnModifier;
+
     public BatchRunner(
             Path yamlFile, int yearsToRun, List<String> columnsToPrint,
             Path outputFolder, Path policyFile, long initialSeed,
@@ -101,13 +117,19 @@ public class BatchRunner
         String simulationName = guessSimulationName() +"_"+runsDone;
 
 
-
+        long startTime = System.currentTimeMillis();
         FishState model = FishStateUtilities.run(simulationName, getYamlFile(),
-                                                 getOutputFolder().resolve(simulationName),
-                                                 initialSeed + runsDone,
-                                                 Log.LEVEL_INFO,
-                                                 true, policyFile == null ? null : policyFile.toString(), yearsToRun, false,
-                                                 heatmapGathererStartYear);
+                getOutputFolder().resolve(simulationName),
+                initialSeed + runsDone,
+                Log.LEVEL_INFO,
+                true, policyFile == null ?
+                        null : policyFile.toString(),
+                yearsToRun, false,
+                heatmapGathererStartYear,
+                getScenarioSetup(),
+                beforeStartSetup
+        );
+        System.out.println("Run took: " + (System.currentTimeMillis()-startTime)/1000 + " seconds");
 
         //print individually
         ArrayList<DataColumn> columns = new ArrayList<>();
@@ -125,12 +147,18 @@ public class BatchRunner
 
         //print it tidyly if needed
         if(writer!=null)
-        for(DataColumn column : columns)
-            for(int year=0; year<yearsToRun; year++)
-                writer.append(runsDone).append(",").append(year).append(",").append(column.getName()).append(
-                        ",").append(column.get(year)).append("\n");
+            for(DataColumn column : columns)
+                for(int year=0; year<yearsToRun; year++) {
+                    writer.append(runsDone).append(",").append(year).append(",");
+                    if(columnModifier!=null)
+                        columnModifier.consume(writer,
+                                model,
+                                year);
 
+                    writer.append(column.getName()).append(
+                            ",").append(column.get(year)).append("\n");
 
+                }
         //new run
         runsDone++;
         return writer;
@@ -194,5 +222,57 @@ public class BatchRunner
      */
     public int getRunsDone() {
         return runsDone;
+    }
+
+    /**
+     * Getter for property 'scenarioSetup'.
+     *
+     * @return Value for property 'scenarioSetup'.
+     */
+    public Consumer<Scenario> getScenarioSetup() {
+        return scenarioSetup;
+    }
+
+    /**
+     * Setter for property 'scenarioSetup'.
+     *
+     * @param scenarioSetup Value to set for property 'scenarioSetup'.
+     */
+    public void setScenarioSetup(Consumer<Scenario> scenarioSetup) {
+        this.scenarioSetup = scenarioSetup;
+    }
+
+
+    /**
+     * Getter for property 'columnModifier'.
+     *
+     * @return Value for property 'columnModifier'.
+     */
+    public ColumnModifier getColumnModifier() {
+        return columnModifier;
+    }
+
+    /**
+     * Setter for property 'columnModifier'.
+     *
+     * @param columnModifier Value to set for property 'columnModifier'.
+     */
+    public void setColumnModifier(ColumnModifier columnModifier) {
+        this.columnModifier = columnModifier;
+    }
+
+    static public interface ColumnModifier{
+
+        void consume(StringBuffer writer, FishState model, Integer year);
+
+    }
+
+
+    public Consumer<FishState> getBeforeStartSetup() {
+        return beforeStartSetup;
+    }
+
+    public void setBeforeStartSetup(Consumer<FishState> beforeStartSetup) {
+        this.beforeStartSetup = beforeStartSetup;
     }
 }

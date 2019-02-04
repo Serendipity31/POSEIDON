@@ -214,8 +214,8 @@ public class FishStateUtilitiesTest {
         assertEquals(0,
                 FishStateUtilities.timeSeriesDistance(
                         input,
-                        input
-                ),
+                        input, 1,
+                        false),
                 0.0001);
 
         //transform into data column
@@ -227,7 +227,7 @@ public class FishStateUtilitiesTest {
         assertEquals(0,
                 FishStateUtilities.timeSeriesDistance(
                         data,
-                        Paths.get("inputs","tests","landings.csv")
+                        Paths.get("inputs","tests","landings.csv"), 1
                 ),
                 0.0001);
 
@@ -237,12 +237,20 @@ public class FishStateUtilitiesTest {
         assertEquals(169961500.94,
                 FishStateUtilities.timeSeriesDistance(
                         data,
-                        Paths.get("inputs","tests","landings2.csv")
+                        Paths.get("inputs","tests","landings2.csv"), 1
                 ),
                 0.01);
 
     }
 
 
+    @Test
+    public void weightedAverage() {
 
+        double[] observations = new double[]{100,200,300};
+        double[] weight = new double[]{1,1,10};
+        double average = FishStateUtilities.getWeightedAverage(observations, weight);
+        assertEquals(275,average,.0001);
+
+    }
 }

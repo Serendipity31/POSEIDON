@@ -22,6 +22,8 @@ package uk.ac.ox.oxfish.demoes;
 
 import com.esotericsoftware.minlog.Log;
 import org.junit.Test;
+import uk.ac.ox.oxfish.biology.growers.SimpleLogisticGrowerFactory;
+import uk.ac.ox.oxfish.biology.initializer.factory.DiffusingLogisticFactory;
 import uk.ac.ox.oxfish.geography.mapmakers.SimpleMapInitializerFactory;
 import uk.ac.ox.oxfish.model.FishState;
 import uk.ac.ox.oxfish.model.scenario.PrototypeScenario;
@@ -43,30 +45,34 @@ public class TooLateToRemoveFishers
         Log.info("This demo replicates the dynamics in: http://carrknight.github.io/assets/oxfish/entryexit.html");
         Log.info("You add a bunch of fishers, and after removing them the biomass is still screwed");
         PrototypeScenario scenario = new PrototypeScenario();
+        ((DiffusingLogisticFactory) scenario.getBiologyInitializer()).setGrower(new SimpleLogisticGrowerFactory(.3));
         scenario.setFishers(50);
         SimpleMapInitializerFactory simpleMapInitializerFactory = new SimpleMapInitializerFactory();
         simpleMapInitializerFactory.setCoastalRoughness(new FixedDoubleParameter(0));
         scenario.setMapInitializer(simpleMapInitializerFactory);
 
-        //lspiRun the model for a full 3 years before progressing
+        //run the model for a full 3 years before progressing
         state.setScenario(scenario);
         state.start();
         while (state.getYear() < 3)
             state.schedule.step(state);
 
-        //now keep running for 10 years adding 3 fishers every month
-        while (state.getYear() < 13) {
+        //now keep running for 15 years adding 3 fishers every month
+        while (state.getYear() < 18) {
             if (state.getDayOfTheYear() % 30 == 0) {
-                state.createFisher();
-                state.createFisher();
-                state.createFisher();
+                state.createFisher(FishState.DEFAULT_POPULATION_NAME);
+                state.createFisher(FishState.DEFAULT_POPULATION_NAME);
+                state.createFisher(FishState.DEFAULT_POPULATION_NAME);
                 //   state.createFisher();
                 //   state.createFisher();
             }
             state.schedule.step(state);
         }
+        Double biomass = state.getLatestYearlyObservation("Biomass Species 0");
+        Log.info("The actual remaining biomass is: " + biomass);
+        assertTrue(biomass < 1000000);
 
-        //for the next 10 years remove the fishers
+        //for the next 5 years remove the fishers
         while (state.getYear() < 23) {
             if (state.getDayOfTheYear() % 30 == 0) {
                 state.killRandomFisher();
@@ -79,7 +85,7 @@ public class TooLateToRemoveFishers
         }
 
         Log.info("I am assuming that the biomass is below 10% the virgin level of 10million");
-        Double biomass = state.getLatestYearlyObservation("Biomass Species 0");
+        biomass = state.getLatestYearlyObservation("Biomass Species 0");
         Log.info("The actual remaining biomass is: " + biomass);
         assertTrue(biomass < 1000000);
     }

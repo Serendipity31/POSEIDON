@@ -75,6 +75,7 @@ public class NarrativeBestTest {
     public void improveSmallFishermen() throws Exception
     {
 
+        long start = System.currentTimeMillis();
 
         HashMap<String, Double> profits = new HashMap<>();
         String[] files = new String[]{"itq_best.yaml","itqplus_best.yaml","tac_best.yaml"};
@@ -105,10 +106,12 @@ public class NarrativeBestTest {
         }
         System.out.println(profits);
         //itq beats tac
-        assertTrue(profits.get("itq_best.yaml") > profits.get("tac_best.yaml")*1.5);
+        assertTrue(profits.get("itq_best.yaml") > profits.get("tac_best.yaml"));
         //itq+ beats itq
         assertTrue(profits.get("itqplus_best.yaml") > profits.get("itq_best.yaml")*1.5);
 
+        long end = System.currentTimeMillis();
+        System.out.println((end-start)/1000);
 
 
     }

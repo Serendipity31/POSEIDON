@@ -31,6 +31,7 @@ import uk.ac.ox.oxfish.model.StepOrder;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.BiFunction;
 
 /**
  * A simple map String--->Double that auto-resets once started
@@ -73,7 +74,7 @@ public class Counter implements Startable, Steppable
      */
     public void addColumn(String columnName)
     {
-        Preconditions.checkArgument(!hasColumn(columnName));
+        Preconditions.checkArgument(!hasColumn(columnName), columnName + " column already exists!");
         data.put(columnName,0d);
     }
 
@@ -94,7 +95,15 @@ public class Counter implements Startable, Steppable
      */
     public void count(String columnName, double add)
     {
-        data.put(columnName, data.get(columnName) + add);
+
+        data.compute(columnName,
+                     (s, oldValue) -> {
+                         if(oldValue==null)
+                             throw new NullPointerException("No column exists");
+                         else
+                             return oldValue + add;
+
+                     });
     }
 
     /**
@@ -102,7 +111,8 @@ public class Counter implements Startable, Steppable
      */
     @Override
     public void turnOff() {
-        receipt.stop();
+        if(receipt!=null)
+            receipt.stop();
     }
 
 
